@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Soja Monitor Pro v3.2 - Cloud Integration</title>
+  <title>Soja Monitor Pro v3.2 - GitHub Cloud Edition</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -12,108 +12,131 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
 
   <style>
+    /* Estilos idénticos a index29.html para mantener la identidad visual */
     :root {
       --primary: #1b5e20; --secondary: #2e7d32; --accent: #8bc34a; --dark: #0F172A;
       --danger: #d32f2f; --warning: #f59e0b; --info: #0288d1; --glass: rgba(255, 255, 255, 0.95);
       --shadow: 0 10px 40px rgba(0,0,0,0.2);
     }
-
     body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: #f0f2f5; display: flex; height: 100vh; overflow: hidden; }
+    #map { flex: 1; height: 100%; }
     
-    #map { flex: 1; height: 100%; z-index: 1; }
-
-    /* Header Estilizado */
     .map-header {
       position: absolute; top: 20px; left: 20px; z-index: 1000; 
-      background: var(--dark); color: white; padding: 15px 25px; 
-      border-radius: 16px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 15px;
-      border: 1px solid rgba(139, 195, 74, 0.3);
+      background: var(--dark); color: white; padding: 12px 20px; 
+      border-radius: 12px; box-shadow: var(--shadow); display: flex; align-items: center; gap: 10px;
+      border: 1px solid var(--accent); pointer-events: none;
     }
     .map-header span { color: var(--accent); font-weight: 800; }
 
-    /* Sidebar Flotante Original */
+    /* Estilos Radar y Controles Shp */
+    .shp-control, .data-control {
+      position: absolute; left: 20px; z-index: 1000;
+      background: white; padding: 10px; border-radius: 8px; box-shadow: var(--shadow);
+    }
+    .shp-control { top: 90px; } .data-control { top: 140px; }
+    .shp-control label, .data-control label {
+      background: var(--secondary); color: white; padding: 6px 12px; border-radius: 5px;
+      cursor: pointer; font-size: 11px; font-weight: bold;
+    }
+
+    /* Sidebar y Tabs */
     #sidebar {
-      position: fixed; right: -100%; top: 0; width: 650px; height: 100%;
-      background: var(--glass); backdrop-filter: blur(20px);
-      box-shadow: -15px 0 50px rgba(0,0,0,0.15);
-      z-index: 1100; transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-      padding: 30px; box-sizing: border-box; display: flex; flex-direction: column;
+      position: fixed; right: -100%; top: 0; width: 750px; height: 100%;
+      background: var(--glass); backdrop-filter: blur(15px);
+      box-shadow: -15px 0 50px rgba(0,0,0,0.3);
+      z-index: 1100; transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex; flex-direction: column; padding: 25px; box-sizing: border-box;
     }
     #sidebar.active { right: 0; }
+    .tab-nav { display: flex; gap: 10px; margin-bottom: 15px; }
+    .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; background: #e2e8f0; color: #64748b; }
+    .tab-btn.active { background: var(--primary); color: white; }
+    .tab-content { display: none; flex-direction: column; flex-grow: 1; overflow-y: auto; }
+    .tab-content.active { display: flex; }
 
-    .close-panel-btn {
-      position: absolute; left: -45px; top: 25px; background: var(--dark); color: white;
-      border: none; width: 45px; height: 50px; border-radius: 12px 0 0 12px;
-      cursor: pointer; font-size: 20px;
-    }
+    /* Widgets Alertas y Stats */
+    .alert-box { display: none; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; font-weight: bold; text-align: center; }
+    .alert-stress { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 15px; }
+    .stat-card { background: white; padding: 12px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-top: 4px solid var(--secondary); }
+    .stat-card small { color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 800; display: block; }
+    #chart { width: 100%; min-height: 380px; background: white; border-radius: 15px; padding: 10px; border: 1px solid #edf2f7; }
 
-    /* Tabs y Botones */
-    .tab-nav { display: flex; gap: 10px; margin: 20px 0; background: #f1f5f9; padding: 5px; border-radius: 12px; }
-    .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; transition: 0.3s; color: #64748b; }
-    .tab-btn.active { background: white; color: var(--primary); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-
-    /* Dashboard Widgets */
-    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-    .stat-card { background: white; padding: 15px; border-radius: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.02); border-bottom: 4px solid var(--accent); }
-    .stat-card small { color: #64748b; font-size: 10px; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
-    .stat-card div { font-size: 18px; font-weight: 800; color: var(--dark); margin-top: 5px; }
-
-    #chart { width: 100%; height: 400px; background: white; border-radius: 18px; padding: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
-
-    .marker-label { background: var(--dark); color: white; padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid var(--accent); }
+    /* Marcadores Mapa */
+    .marker-label { background: rgba(15, 23, 42, 0.85); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid var(--accent); white-space: nowrap; }
     
-    #loading-overlay {
-      position: fixed; inset: 0; background: var(--dark); z-index: 9999;
-      display: flex; flex-direction: column; align-items: center; justify-content: center; color: white;
-    }
-    .spinner { width: 50px; height: 50px; border: 5px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    /* Radar Legend */
+    #radar-control { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; background: var(--dark); color: white; padding: 15px; border-radius: 15px; display: none; align-items: center; gap: 15px; }
+    
+    /* WRF Section */
+    .wrf-section { margin-top: 20px; background: #0f172a; color: #e2e8f0; padding: 15px; border-radius: 12px; border-left: 5px solid #38bdf8; }
+    .wrf-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+    .wrf-stat { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; }
+    
+    .agronomic-tip { margin-top:10px; font-size: 12px; padding: 12px; border-radius: 8px; display: none; }
   </style>
 </head>
 <body>
 
-<div id="loading-overlay">
-  <div class="spinner"></div>
-  <div id="status-text">Iniciando Monitor de Cultivos...</div>
+<div class="map-header">
+  <div style="background: var(--accent); color: var(--dark); padding: 8px; border-radius: 10px; font-size: 20px;">🌱</div>
+  <div>CROP <span style="color:white">MONITOR</span> <span style="color:var(--accent)">PRO</span> <small>Cloud Edition</small></div>
 </div>
 
-<div class="map-header">
-  <div>SOJA <span>MONITOR</span> <span>PRO</span> <small>v3.2 Cloud</small></div>
-</div>
+<div class="shp-control"><label for="shp-upload">📁 Lote (ZIP)</label><input type="file" id="shp-upload" accept=".zip" style="display:none"></div>
 
 <div id="map"></div>
 
-<div id="sidebar">
-  <button class="close-panel-btn" onclick="closeSidebar()">✕</button>
-  <h2 id="station-name" style="margin:0; font-weight: 800; color: var(--dark);">Seleccione Estación</h2>
-  <p id="station-coords" style="color: #64748b; font-size: 13px; margin: 5px 0 20px 0;">Coordenadas: --</p>
+<div id="radar-control">
+  <button id="play-btn" style="background:none; border:none; color:white; cursor:pointer;">▶ Play Radar</button>
+  <input type="range" id="radar-range" min="0" max="12" value="12">
+  <div id="radar-time">Cargando...</div>
+</div>
 
+<div id="sidebar">
+  <button class="close-panel-btn" onclick="closeSidebar()" style="position: absolute; left: -40px; top: 20px; background: var(--dark); color: white; border: none; width: 40px; height: 45px; border-radius: 10px 0 0 10px; cursor: pointer;">✕</button>
+  <h2 id="station-name" style="margin: 0 0 15px 0; color: var(--dark); font-weight: 800;">Estación</h2>
+  
   <div class="tab-nav">
-    <button class="tab-btn active" onclick="showTab('monitor')">DATOS HISTÓRICOS</button>
-    <button class="tab-btn" onclick="showTab('forecast')">PRONÓSTICO 7 DÍAS</button>
+    <button class="tab-btn active" onclick="showTab('monitor')">📈 MONITOR HISTÓRICO</button>
+    <button class="tab-btn" onclick="showTab('forecast')">🌤️ PRONÓSTICO WRF</button>
   </div>
 
-  <div id="tab-monitor" class="tab-content">
-    <select id="month-selector" style="width:100%; padding:12px; border-radius:10px; margin-bottom:20px; font-family:inherit; font-weight:700;" onchange="filterByMonth()"></select>
-    
+  <div id="tab-monitor" class="tab-content active">
+    <div id="stress-alert" class="alert-box alert-stress">⚠️ CRÍTICO: Estrés térmico prolongado detectado.</div>
+    <select id="month-selector" onchange="filterByMonth()" style="width:100%; padding:10px; border-radius:8px; margin-bottom:15px; font-weight:700;"></select>
+
     <div class="stats-grid">
-      <div class="stat-card"><small>Lluvia</small><div id="total-prec">0 mm</div></div>
-      <div class="stat-card"><small>ETp</small><div id="total-etp">0 mm</div></div>
-      <div class="stat-card"><small>GDD</small><div id="total-gdd">0°</div></div>
-      <div class="stat-card"><small>Balance</small><div id="water-balance">0 mm</div></div>
+      <div class="stat-card"><small>💧 Lluvia</small><div id="total-prec">0 mm</div></div>
+      <div class="stat-card"><small>☀️ ETp</small><div id="total-etp">0 mm</div></div>
+      <div class="stat-card"><small>📈 GDD</small><div id="total-gdd">0 °C/d</div></div>
+      <div class="stat-card"><small>⚖️ Balance</small><div id="water-balance">0 mm</div></div>
     </div>
-    
     <div id="chart"></div>
   </div>
 
-  <div id="tab-forecast" class="tab-content" style="display:none;">
-    <div id="forecast-container" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:10px;"></div>
+  <div id="tab-forecast" class="tab-content">
+    <div id="forecast-container" style="display:grid; grid-template-columns: repeat(6, 1fr); gap: 8px;"></div>
+    
+    <div class="wrf-section">
+        <div style="font-weight: 800; font-size: 11px; color: #38bdf8;">MODELO MESOESCALA WRF (9KM)</div>
+        <div class="wrf-grid">
+            <div class="wrf-stat"><small style="font-size:9px">Lluvia Total</small><div id="wrf-total-rain" style="font-weight:700">0 mm</div></div>
+            <div class="wrf-stat"><small style="font-size:9px">GDD Proy.</small><div id="wrf-gdd" style="font-weight:700">0°</div></div>
+            <div class="wrf-stat"><small style="font-size:9px">Viento Máx</small><div id="wrf-wind" style="font-weight:700">0 km/h</div></div>
+            <div class="wrf-stat"><small style="font-size:9px">Prob. Torm.</small><div id="wrf-prob" style="font-weight:700">0%</div></div>
+        </div>
+    </div>
+    
+    <div id="rust-risk-msg" class="agronomic-tip" style="background:#fff5f5; border-left:4px solid var(--danger); color:#c53030;">🚨 <b>ROYA:</b> Alta HR detectada (>80%). Monitoree el lote.</div>
+    <div id="water-stress-msg" class="agronomic-tip" style="background:#fffbeb; border-left:4px solid #f59e0b; color:#92400e;">⚠️ <b>ESTRÉS HÍDRICO:</b> Lluvias nulas y altas temperaturas.</div>
   </div>
 </div>
 
 <script>
 // --- CONFIGURACIÓN DE GITHUB ---
-const GITHUB_BASE = "https://raw.githubusercontent.com/Diego2377872/sojamonitor/main/.data/";
+const GITHUB_RAW = "https://raw.githubusercontent.com/Diego2377872/sojamonitor/main/.data/";
 
 let estacionesData = {};
 let currentLoc = null;
@@ -121,181 +144,181 @@ let currentFilteredData = null;
 const baseTemp = 10;
 const chart = echarts.init(document.getElementById('chart'));
 
-// --- INICIALIZACIÓN DEL MAPA ---
-const map = L.map('map', { center: [-23.44, -58.44], zoom: 6 });
-L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-  subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-  attribution: '© Google Satellite'
-}).addTo(map);
+// --- MAPA ---
+const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google' });
+const map = L.map('map', { center: [-23.5, -58.5], zoom: 6, layers: [googleHybrid] });
 
-// --- FUNCIONES DE CARGA REMOTA ---
-
-async function initSystem() {
-  try {
-    document.getElementById('status-text').innerText = "Cargando estaciones desde GitHub...";
-    const response = await fetch(`${GITHUB_BASE}estaciones.json`);
-    if (!response.ok) throw new Error("Error de red");
-    estacionesData = await response.json();
-    
-    renderMarkers();
-    document.getElementById('loading-overlay').style.fadeOut = "0.5s";
-    setTimeout(() => document.getElementById('loading-overlay').remove(), 500);
-  } catch (error) {
-    document.getElementById('status-text').innerText = "Error: Verifica tu conexión o el archivo estaciones.json";
-    console.error(error);
-  }
+// --- INICIO: CARGAR ESTACIONES DESDE GITHUB ---
+async function initApp() {
+    try {
+        const resp = await fetch(`${GITHUB_RAW}estaciones.json`);
+        estacionesData = await resp.json();
+        renderMarkers();
+        initRadar();
+    } catch (e) { console.error("Error al iniciar estaciones:", e); }
 }
 
 function renderMarkers() {
-  Object.keys(estacionesData).forEach(name => {
-    const est = estacionesData[name];
-    const marker = L.marker(est.coords, {
-      icon: L.divIcon({
-        className: 'custom-div-icon',
-        html: `<div style="text-align:center;">📍<div class="marker-label">${name}</div></div>`,
-        iconSize: [120, 40]
-      })
-    }).addTo(map);
-    
-    marker.on('click', () => selectStation(name));
-  });
+    Object.keys(estacionesData).forEach(name => {
+        const est = estacionesData[name];
+        L.marker(est.coords, {
+            icon: L.divIcon({
+                className: 'custom-icon',
+                html: `<div style="text-align:center">📍<div class="marker-label">${name}</div></div>`,
+                iconSize: [100, 40]
+            })
+        }).addTo(map).on('click', () => selectStation(name));
+    });
 }
 
+// --- SELECCIÓN Y CARGA DE DATOS DINÁMICOS ---
 async function selectStation(name) {
-  const est = estacionesData[name];
-  currentLoc = name;
-  
-  // Actualizar UI básica
-  document.getElementById('station-name').innerText = est.titulo;
-  document.getElementById('station-coords').innerText = `Lat: ${est.coords[0]} | Lon: ${est.coords[1]}`;
-  document.getElementById('sidebar').classList.add('active');
-
-  // Carga de historial si no existe localmente
-  if (!est.historial || est.historial.length === 0) {
-    document.getElementById('status-text').innerText = `Cargando datos de ${name}...`;
-    try {
-      const resp = await fetch(`${GITHUB_BASE}${est.archivo}`);
-      estacionesData[name].historial = await resp.json();
-    } catch (err) {
-      alert("No se pudieron obtener los datos de esta estación.");
-      return;
+    const est = estacionesData[name];
+    currentLoc = name;
+    document.getElementById('station-name').innerText = "Cargando " + est.titulo + "...";
+    
+    // Si no tiene historial cargado, lo busca en GitHub
+    if (!est.historial) {
+        try {
+            const resp = await fetch(`${GITHUB_RAW}${est.archivo}`);
+            estacionesData[name].historial = await resp.json();
+        } catch (e) { alert("Error cargando datos de GitHub para " + name); return; }
     }
-  }
 
-  showTab('monitor');
-  updateMonthSelector();
-  filterByMonth();
-  fetchForecast(est.coords[0], est.coords[1]);
-  setTimeout(() => chart.resize(), 500);
+    document.getElementById('station-name').innerText = est.titulo;
+    document.getElementById('sidebar').classList.add('active');
+    updateMonthSelector();
+    filterByMonth();
+    fetchForecast(est.coords[0], est.coords[1]);
+    setTimeout(() => chart.resize(), 500);
 }
 
-// --- LÓGICA DE CÁLCULO Y GRÁFICAS ---
-
+// --- LÓGICA DE DATOS (Mismo motor que index29) ---
 function updateMonthSelector() {
-  const selector = document.getElementById('month-selector');
-  const hist = estacionesData[currentLoc].historial;
-  const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-  
-  selector.innerHTML = '<option value="all">Ver Ciclo Completo</option>';
-  hist.forEach((m, idx) => {
-    const opt = document.createElement('option');
-    opt.value = idx;
-    opt.innerText = `${meses[m.month-1]} ${m.year}`;
-    selector.appendChild(opt);
-  });
-  selector.value = hist.length - 1; // Selecciona el mes más reciente por defecto
+    const selector = document.getElementById('month-selector');
+    const hist = estacionesData[currentLoc].historial;
+    selector.innerHTML = '<option value="all">Ciclo Completo</option>';
+    const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    hist.forEach((h, i) => {
+        selector.innerHTML += `<option value="${i}">${meses[h.month-1]} ${h.year}</option>`;
+    });
+    selector.value = hist.length - 1;
 }
 
 function filterByMonth() {
-  const val = document.getElementById('month-selector').value;
-  const hist = estacionesData[currentLoc].historial;
-
-  if (val === "all") {
-    currentFilteredData = {
-      tmax: hist.flatMap(h => h.tmax),
-      tmin: hist.flatMap(h => h.tmin),
-      prec: hist.flatMap(h => h.prec)
-    };
-  } else {
-    const data = hist[parseInt(val)];
-    currentFilteredData = { tmax: [...data.tmax], tmin: [...data.tmin], prec: [...data.prec] };
-  }
-  updateAnalytics();
+    const val = document.getElementById('month-selector').value;
+    const hist = estacionesData[currentLoc].historial;
+    if (val === "all") {
+        currentFilteredData = { tmax: hist.flatMap(h => h.tmax), tmin: hist.flatMap(h => h.tmin), prec: hist.flatMap(h => h.prec) };
+    } else {
+        const s = hist[parseInt(val)];
+        currentFilteredData = { tmax: [...s.tmax], tmin: [...s.tmin], prec: [...s.prec] };
+    }
+    updateAnalytics();
 }
 
 function updateAnalytics() {
-  const d = currentFilteredData;
-  const days = d.tmax.map((_, i) => i + 1);
-  
-  // Fórmulas Agronómicas: ETp (Hargreaves adaptado) y GDD
-  const etp = d.tmax.map((tx, i) => {
-    const tm = (tx + d.tmin[i]) / 2;
-    return 0.0023 * (tm + 17.8) * Math.sqrt(tx - d.tmin[i]) * 15; // Simplificado para visualización
-  });
+    const d = currentFilteredData;
+    const etp = d.tmax.map((tx, i) => 0.0023 * 15 * (((tx + (d.tmin[i]||tx-10))/2)+17.8) * Math.sqrt(tx-(d.tmin[i]||tx-10)));
+    const gdd = d.tmax.map((tx, i) => Math.max(0, ((tx + (d.tmin[i]||tx-10))/2) - baseTemp));
 
-  const gdd = d.tmax.map((tx, i) => Math.max(0, ((tx + d.tmin[i]) / 2) - baseTemp));
+    chart.setOption({
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: d.tmax.map((_, i) => i + 1) },
+        yAxis: [{ type: 'value', name: '°C' }, { type: 'value', name: 'mm', position: 'right' }],
+        series: [
+            { name: 'Lluvia', type: 'bar', yAxisIndex: 1, data: d.prec, itemStyle: {color: '#4fc3f7'} },
+            { name: 'T.Máx', type: 'line', data: d.tmax, itemStyle: {color: '#ef5350'}, smooth: true },
+            { name: 'ETp', type: 'line', yAxisIndex: 1, data: etp.map(v => v.toFixed(1)), lineStyle: {type: 'dashed'}, itemStyle: {color: '#ab47bc'} }
+        ]
+    }, true);
 
-  // Totales
-  const totalPrec = d.prec.reduce((a, b) => a + b, 0);
-  const totalEtp = etp.reduce((a, b) => a + b, 0);
-  const totalGdd = gdd.reduce((a, b) => a + b, 0);
-
-  document.getElementById('total-prec').innerText = totalPrec.toFixed(1) + " mm";
-  document.getElementById('total-etp').innerText = totalEtp.toFixed(1) + " mm";
-  document.getElementById('total-gdd').innerText = Math.round(totalGdd) + "°";
-  document.getElementById('water-balance').innerText = (totalPrec - totalEtp).toFixed(1) + " mm";
-
-  // Actualizar Gráfica ECharts
-  chart.setOption({
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-    legend: { data: ['Máxima', 'Mínima', 'Lluvia', 'ETp'], bottom: 0 },
-    grid: { top: '10%', left: '3%', right: '4%', bottom: '15%', containLabel: true },
-    xAxis: { type: 'category', data: days },
-    yAxis: [
-      { type: 'value', name: 'Temp (°C)', position: 'left' },
-      { type: 'value', name: 'Agua (mm)', position: 'right' }
-    ],
-    series: [
-      { name: 'Lluvia', type: 'bar', yAxisIndex: 1, data: d.prec, itemStyle: { color: '#0ea5e9', opacity: 0.8 } },
-      { name: 'ETp', type: 'line', yAxisIndex: 1, data: etp.map(v => v.toFixed(1)), lineStyle: { type: 'dashed' }, itemStyle: { color: '#8b5cf6' } },
-      { name: 'Máxima', type: 'line', data: d.tmax, smooth: true, itemStyle: { color: '#ef4444' } },
-      { name: 'Mínima', type: 'line', data: d.tmin, smooth: true, itemStyle: { color: '#3b82f6' } }
-    ]
-  }, true);
+    const sumPrec = d.prec.reduce((a,b) => a+b, 0);
+    const sumEtp = etp.reduce((a,b) => a+b, 0);
+    document.getElementById('total-prec').innerText = sumPrec.toFixed(1) + " mm";
+    document.getElementById('total-etp').innerText = sumEtp.toFixed(1) + " mm";
+    document.getElementById('total-gdd').innerText = Math.round(gdd.reduce((a,b) => a+b, 0)) + " °C/d";
+    document.getElementById('water-balance').innerText = (sumPrec - sumEtp).toFixed(1) + " mm";
+    
+    // Alerta de estrés térmico
+    let consecutive = 0;
+    d.tmax.forEach(t => { if(t > 35) consecutive++; else consecutive = 0; });
+    document.getElementById('stress-alert').style.display = consecutive >= 3 ? 'block' : 'none';
 }
 
+// --- PRONÓSTICO Y MODELO WRF ---
 async function fetchForecast(lat, lon) {
-  const container = document.getElementById('forecast-container');
-  container.innerHTML = "<p style='grid-column: 1/-1; text-align:center;'>Obteniendo datos de satélite...</p>";
-  
-  try {
-    const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`);
-    const data = await res.json();
-    container.innerHTML = "";
-    data.daily.time.forEach((time, i) => {
-      container.innerHTML += `
-        <div style="background:white; padding:10px; border-radius:12px; text-align:center; border:1px solid #e2e8f0;">
-          <div style="font-size:11px; font-weight:800; color:#64748b; margin-bottom:5px;">${time.split('-')[2]}/${time.split('-')[1]}</div>
-          <div style="color:#ef4444; font-weight:800;">${Math.round(data.daily.temperature_2m_max[i])}°</div>
-          <div style="color:#3b82f6; font-size:12px;">${data.daily.precipitation_sum[i]} mm</div>
-        </div>`;
-    });
-  } catch (e) { container.innerHTML = "Error al conectar con el servicio de pronóstico."; }
+    const container = document.getElementById('forecast-container');
+    container.innerHTML = "Cargando...";
+    try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max&hourly=relative_humidity_2m&timezone=auto&forecast_days=6`;
+        const res = await fetch(url);
+        const data = await res.json();
+        container.innerHTML = "";
+        
+        let totalRain = 0; let totalGDD = 0; let maxHum = 0;
+
+        data.daily.time.forEach((t, i) => {
+            const tx = data.daily.temperature_2m_max[i];
+            const tn = data.daily.temperature_2m_min[i];
+            totalRain += data.daily.precipitation_sum[i];
+            totalGDD += Math.max(0, ((tx+tn)/2) - baseTemp);
+            
+            container.innerHTML += `
+                <div style="background:white; padding:8px; border-radius:10px; text-align:center; border:1px solid #eee;">
+                    <small>${t.split('-')[2]}/${t.split('-')[1]}</small><br>
+                    <b style="color:red">${Math.round(tx)}°</b><br>
+                    <b style="color:blue; font-size:10px;">${data.daily.precipitation_sum[i]}mm</b>
+                </div>`;
+        });
+
+        // Lógica Alertas
+        document.getElementById('wrf-total-rain').innerText = totalRain.toFixed(1) + " mm";
+        document.getElementById('wrf-gdd').innerText = Math.round(totalGDD) + "°";
+        document.getElementById('wrf-wind').innerText = Math.max(...data.daily.wind_gusts_10m_max) + " km/h";
+        
+        const avgHum = data.hourly.relative_humidity_2m.slice(0, 48).reduce((a,b)=>a+b,0)/48;
+        document.getElementById('rust-risk-msg').style.display = avgHum > 80 ? 'block' : 'none';
+        document.getElementById('water-stress-msg').style.display = (totalRain < 1 && Math.max(...data.daily.temperature_2m_max) > 35) ? 'block' : 'none';
+
+    } catch (e) { container.innerHTML = "Error API"; }
 }
+
+// --- RADAR RAINVIEWER ---
+let radarLayers = []; let currentRadarIdx = 0;
+async function initRadar() {
+    const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    const data = await resp.json();
+    data.radar.past.forEach(item => {
+        const layer = L.tileLayer(`https://tilecache.rainviewer.com${item.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, zIndex: 500 });
+        radarLayers.push({layer, time: item.time});
+    });
+    const radarGroup = L.layerGroup();
+    L.control.layers({}, { "Radar de Lluvias": radarGroup }).addTo(map);
+    map.on('overlayadd', (e) => { if(e.name === "Radar de Lluvias") document.getElementById('radar-control').style.display = 'flex'; });
+}
+
+// --- SHAPEFILES ---
+document.getElementById('shp-upload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        shp(ev.target.result).then(geojson => {
+            L.geoJSON(geojson, { style: { color: "#8bc34a", weight: 3, fillOpacity: 0.2 } }).addTo(map);
+        });
+    };
+    reader.readAsArrayBuffer(file);
+});
 
 function showTab(tab) {
-  document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + tab).style.display = 'block';
-  event?.target?.classList?.add('active');
-  if (tab === 'monitor') chart.resize();
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    if(tab === 'monitor') chart.resize();
 }
-
 function closeSidebar() { document.getElementById('sidebar').classList.remove('active'); }
 
-// --- ARRANCAR ---
-initSystem();
-
+initApp();
 </script>
 </body>
 </html>
