@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Soja Monitor Pro v3.2 - GitHub Cloud Edition</title>
+  <title>Soja Monitor Pro v3.2 - Forecast Real-Time</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -12,15 +12,24 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
 
   <style>
-    /* Estilos idénticos a index29.html para mantener la identidad visual */
     :root {
-      --primary: #1b5e20; --secondary: #2e7d32; --accent: #8bc34a; --dark: #0F172A;
-      --danger: #d32f2f; --warning: #f59e0b; --info: #0288d1; --glass: rgba(255, 255, 255, 0.95);
+      --primary: #1b5e20;
+      --secondary: #2e7d32;
+      --accent: #8bc34a;
+      --dark: #0F172A;
+      --danger: #d32f2f;
+      --warning: #f59e0b;
+      --info: #0288d1;
+      --glass: rgba(255, 255, 255, 0.95);
       --shadow: 0 10px 40px rgba(0,0,0,0.2);
     }
+
     body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: #f0f2f5; display: flex; height: 100vh; overflow: hidden; }
-    #map { flex: 1; height: 100%; }
-    
+
+    .leaflet-tile-pane .leaflet-layer {
+      transition: opacity 0.3s ease-in-out;
+    }
+
     .map-header {
       position: absolute; top: 20px; left: 20px; z-index: 1000; 
       background: var(--dark); color: white; padding: 12px 20px; 
@@ -28,19 +37,55 @@
       border: 1px solid var(--accent); pointer-events: none;
     }
     .map-header span { color: var(--accent); font-weight: 800; }
+    #map { flex: 1; height: 100%; }
 
-    /* Estilos Radar y Controles Shp */
-    .shp-control, .data-control {
-      position: absolute; left: 20px; z-index: 1000;
+    .station-marker-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.3s ease;
+    }
+    .station-marker-container:hover {
+      transform: scale(1.1);
+      z-index: 1001 !important;
+    }
+    .marker-pin {
+      width: 32px;
+      height: 32px;
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+    }
+    .marker-label {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(4px);
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-top: 5px;
+      border: 1px solid rgba(139, 195, 74, 0.5);
+      white-space: nowrap;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .shp-control {
+      position: absolute; top: 90px; left: 20px; z-index: 1000;
       background: white; padding: 10px; border-radius: 8px; box-shadow: var(--shadow);
     }
-    .shp-control { top: 90px; } .data-control { top: 140px; }
-    .shp-control label, .data-control label {
+    .shp-control label {
       background: var(--secondary); color: white; padding: 6px 12px; border-radius: 5px;
       cursor: pointer; font-size: 11px; font-weight: bold;
     }
 
-    /* Sidebar y Tabs */
+    .data-control {
+      position: absolute; top: 140px; left: 20px; z-index: 1000;
+      background: white; padding: 10px; border-radius: 8px; box-shadow: var(--shadow);
+    }
+    .data-control label {
+      background: var(--secondary); color: white; padding: 6px 12px; border-radius: 5px;
+      cursor: pointer; font-size: 11px; font-weight: bold;
+    }
+
     #sidebar {
       position: fixed; right: -100%; top: 0; width: 750px; height: 100%;
       background: var(--glass); backdrop-filter: blur(15px);
@@ -49,276 +94,687 @@
       display: flex; flex-direction: column; padding: 25px; box-sizing: border-box;
     }
     #sidebar.active { right: 0; }
+
     .tab-nav { display: flex; gap: 10px; margin-bottom: 15px; }
-    .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; background: #e2e8f0; color: #64748b; }
-    .tab-btn.active { background: var(--primary); color: white; }
-    .tab-content { display: none; flex-direction: column; flex-grow: 1; overflow-y: auto; }
+    .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 800; background: #e2e8f0; color: #64748b; transition: 0.3s; }
+    .tab-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 10px rgba(27, 94, 32, 0.3); }
+
+    .tab-content { display: none; flex-direction: column; flex-grow: 1; overflow-y: auto; padding-right: 5px; }
     .tab-content.active { display: flex; }
 
-    /* Widgets Alertas y Stats */
+    .forecast-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 15px; }
+    .fc-card { 
+      background: white; padding: 12px 6px; border-radius: 12px; text-align: center;
+      border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .fc-date { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 8px; display: block; }
+    .fc-temp { margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 5px; }
+    .fc-max { color: var(--danger); font-size: 16px; font-weight: 800; display: block; }
+    .fc-min { color: var(--info); font-size: 12px; font-weight: 600; }
+    
+    .fc-extra { font-size: 10px; text-align: left; padding: 5px; background: #f8fafc; border-radius: 6px; }
+    .fc-item { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; font-weight: 600; color: #334155; }
+
+    .wrf-section { 
+        margin-top: 20px; background: #0f172a; color: #e2e8f0; padding: 15px; border-radius: 12px; border-left: 5px solid #38bdf8;
+    }
+    .wrf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .wrf-badge-container { display: flex; flex-direction: column; align-items: flex-end; }
+    .wrf-badge { background: #fbbf24; color: #0f172a; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; }
+    .wrf-period-text { font-size: 9px; opacity: 0.8; margin-top: 2px; font-weight: 600; color: #fbbf24; }
+    .wrf-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .wrf-stat { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; }
+    .wrf-label { font-size: 9px; color: #94a3b8; text-transform: uppercase; display: block; }
+    .wrf-val { font-size: 15px; font-weight: 700; color: #38bdf8; }
+
     .alert-box { display: none; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; font-weight: bold; text-align: center; }
     .alert-stress { background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; }
     .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 15px; }
     .stat-card { background: white; padding: 12px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-top: 4px solid var(--secondary); }
-    .stat-card small { color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 800; display: block; }
-    #chart { width: 100%; min-height: 380px; background: white; border-radius: 15px; padding: 10px; border: 1px solid #edf2f7; }
+    .stat-card small { color: #64748b; font-size: 9px; text-transform: uppercase; font-weight: 800; display: block; margin-bottom: 4px; }
+    .stat-card div { font-size: 18px; font-weight: 700; color: var(--dark); }
+    #chart { width: 100%; min-height: 350px; background: white; border-radius: 15px; border: 1px solid #edf2f7; padding: 10px; }
+    
+    .controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 15px; }
+    .btn { padding: 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 12px; transition: 0.3s; }
+    .btn-reset { background: #e2e8f0; color: #475569; }
+    .btn-csv { background: var(--primary); color: white; }
+    .btn-jpg { background: var(--danger); color: white; }
+    .close-panel-btn { position: absolute; left: -40px; top: 20px; background: var(--dark); color: white; border: none; width: 40px; height: 45px; border-radius: 10px 0 0 10px; cursor: pointer; }
+    #open-panel-btn { position: absolute; bottom: 30px; right: 30px; background: var(--primary); color: white; border: none; padding: 15px 35px; border-radius: 50px; cursor: pointer; z-index: 1000; box-shadow: var(--shadow); font-weight: 800; display: none; }
+    
+    .leaflet-control-layers { margin-top: 80px !important; border-radius: 10px !important; box-shadow: var(--shadow) !important; }
 
-    /* Marcadores Mapa */
-    .marker-label { background: rgba(15, 23, 42, 0.85); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid var(--accent); white-space: nowrap; }
-    
-    /* Radar Legend */
-    #radar-control { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000; background: var(--dark); color: white; padding: 15px; border-radius: 15px; display: none; align-items: center; gap: 15px; }
-    
-    /* WRF Section */
-    .wrf-section { margin-top: 20px; background: #0f172a; color: #e2e8f0; padding: 15px; border-radius: 12px; border-left: 5px solid #38bdf8; }
-    .wrf-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
-    .wrf-stat { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; }
-    
-    .agronomic-tip { margin-top:10px; font-size: 12px; padding: 12px; border-radius: 8px; display: none; }
+    #radar-control {
+      position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+      z-index: 1000; background: var(--dark); color: white; padding: 15px;
+      border-radius: 15px; display: none; align-items: center; gap: 15px;
+      box-shadow: var(--shadow); border: 1px solid var(--accent);
+    }
+    #radar-control input { width: 200px; cursor: pointer; accent-color: var(--accent); }
+    #radar-time { font-family: monospace; font-weight: bold; min-width: 150px; text-align: center; }
+
+    #radar-legend {
+      position: absolute; bottom: 100px; left: 20px; z-index: 1000;
+      background: rgba(15, 23, 42, 0.9); color: white; padding: 10px;
+      border-radius: 8px; font-size: 10px; display: none; flex-direction: column; gap: 5px;
+      border: 1px solid #444; box-shadow: var(--shadow);
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .color-bar { height: 10px; width: 120px; border-radius: 2px; background: linear-gradient(to right, #4fc3f7, #4caf50, #ffeb3b, #f44336, #9c27b0); }
+
+    .agronomic-tip { margin-top:15px; font-size: 12px; color: #475569; background: #f1f5f9; padding: 15px; border-radius: 12px; border-left: 5px solid var(--info); }
+    .rust-alert { border-left-color: var(--danger); background: #fff5f5; color: #c53030; display: none; margin-top: 10px; }
+    .water-stress-alert { border-left-color: #f59e0b; background: #fffbeb; color: #92400e; display: none; margin-top: 10px; }
+    .thermal-stress-alert { border-left-color: #ef5350; background: #fef2f2; color: #991b1b; display: none; margin-top: 10px; }
+    .storm-risk-alert { border-left-color: #7b1fa2; background: #f3e5f5; color: #4a148c; display: none; margin-top: 10px; }
+
+    .shp-popup-table { font-size: 11px; border-collapse: collapse; width: 100%; }
+    .shp-popup-table tr { border-bottom: 1px solid #eee; }
+    .shp-popup-table td { padding: 4px; }
+    .shp-popup-table b { color: var(--primary); }
+
+    /* ESTILO SELECTOR MES */
+    .month-filter-container {
+      margin-bottom: 15px; display: flex; align-items: center; gap: 10px; 
+      background: #fff; padding: 10px; border-radius: 12px; border: 1px solid #e2e8f0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+    }
+    .month-filter-container span { font-size: 10px; font-weight: 800; color: var(--primary); text-transform: uppercase; }
+    #month-selector { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; font-weight: 700; color: var(--dark); cursor: pointer; font-size: 12px; outline: none; transition: 0.3s; }
+    #month-selector:hover { border-color: var(--primary); }
   </style>
 </head>
 <body>
 
 <div class="map-header">
   <div style="background: var(--accent); color: var(--dark); padding: 8px; border-radius: 10px; font-size: 20px;">🌱</div>
-  <div>CROP <span style="color:white">MONITOR</span> <span style="color:var(--accent)">PRO</span> <small>Cloud Edition</small></div>
+  <div>CROP <span style="color:white">MONITOR</span> <span style="color:var(--accent)">PRO</span> <small style="opacity:0.6; font-weight:400; font-size:10px">by Datumpy</small></div>
 </div>
 
-<div class="shp-control"><label for="shp-upload">📁 Lote (ZIP)</label><input type="file" id="shp-upload" accept=".zip" style="display:none"></div>
+<div class="shp-control">
+  <label for="shp-upload">📁 Cargar Lote (ZIP)</label>
+  <input type="file" id="shp-upload" accept=".zip" style="display:none">
+</div>
 
-<div id="map"></div>
+<div class="data-control">
+  <label for="data-upload">📊 Cargar Datos Mes (JSON)</label>
+  <input type="file" id="data-upload" accept=".json" style="display:none">
+</div>
+
+<div id="radar-legend">
+  <div style="font-weight: 800; margin-bottom: 2px; text-transform: uppercase; color: var(--accent);">Intensidad Lluvia</div>
+  <div class="color-bar"></div>
+  <div style="display: flex; justify-content: space-between;">
+    <span>Ligera</span>
+    <span>Moderada</span>
+    <span>Fuerte</span>
+  </div>
+</div>
 
 <div id="radar-control">
-  <button id="play-btn" style="background:none; border:none; color:white; cursor:pointer;">▶ Play Radar</button>
-  <input type="range" id="radar-range" min="0" max="12" value="12">
-  <div id="radar-time">Cargando...</div>
+  <button class="btn btn-reset" onclick="playRadar()" id="play-btn">▶ Play</button>
+  <input type="range" id="radar-range" min="0" max="12" step="1" value="12">
+  <div id="radar-time">Cargando radar...</div>
 </div>
 
+<button id="open-panel-btn" onclick="openSidebar()">📊 Ver Análisis Detallado</button>
+<div id="map"></div>
+
 <div id="sidebar">
-  <button class="close-panel-btn" onclick="closeSidebar()" style="position: absolute; left: -40px; top: 20px; background: var(--dark); color: white; border: none; width: 40px; height: 45px; border-radius: 10px 0 0 10px; cursor: pointer;">✕</button>
-  <h2 id="station-name" style="margin: 0 0 15px 0; color: var(--dark); font-weight: 800;">Estación</h2>
+  <button class="close-panel-btn" onclick="closeSidebar()">✕</button>
+  <h2 id="station-name" style="margin: 0 0 15px 0; color: var(--dark); font-size: 22px; font-weight: 800;">Estación</h2>
   
   <div class="tab-nav">
     <button class="tab-btn active" onclick="showTab('monitor')">📈 MONITOR HISTÓRICO</button>
-    <button class="tab-btn" onclick="showTab('forecast')">🌤️ PRONÓSTICO WRF</button>
+    <button class="tab-btn" onclick="showTab('forecast')">🌤️ PRONÓSTICO (HOY + 5 DÍAS)</button>
   </div>
 
   <div id="tab-monitor" class="tab-content active">
-    <div id="stress-alert" class="alert-box alert-stress">⚠️ CRÍTICO: Estrés térmico prolongado detectado.</div>
-    <select id="month-selector" onchange="filterByMonth()" style="width:100%; padding:10px; border-radius:8px; margin-bottom:15px; font-weight:700;"></select>
+    <div id="stress-alert" class="alert-box alert-stress">
+      ⚠️ CRÍTICO: Estrés térmico prolongado (>3 días >35°C). Riesgo de aborto de flores/vainas.
+    </div>
+
+    <div class="month-filter-container">
+      <span>Período de Análisis:</span>
+      <select id="month-selector" onchange="filterByMonth()">
+        </select>
+    </div>
 
     <div class="stats-grid">
-      <div class="stat-card"><small>💧 Lluvia</small><div id="total-prec">0 mm</div></div>
-      <div class="stat-card"><small>☀️ ETp</small><div id="total-etp">0 mm</div></div>
-      <div class="stat-card"><small>📈 GDD</small><div id="total-gdd">0 °C/d</div></div>
-      <div class="stat-card"><small>⚖️ Balance</small><div id="water-balance">0 mm</div></div>
+      <div class="stat-card"><small>💧 Lluvia Total</small><div id="total-prec">0 mm</div></div>
+      <div class="stat-card"><small>☀️ Evapotransp.</small><div id="total-etp">0 mm</div></div>
+      <div class="stat-card" style="border-top-color: #f59e0b;"><small>📈 GDD Acum.</small><div id="total-gdd">0 °C/día</div></div>
+      <div class="stat-card" style="border-top-color: #0288d1;"><small>⚖️ Bal. Hídrico</small><div id="water-balance">0 mm</div></div>
     </div>
     <div id="chart"></div>
+    <div class="controls">
+      <button class="btn btn-reset" onclick="location.reload()">🔄 Recargar</button>
+      <button class="btn btn-csv" id="downloadCsv">📥 Datos CSV</button>
+      <button class="btn btn-jpg" id="downloadJpg">🖼️ Captura JPG</button>
+    </div>
   </div>
 
   <div id="tab-forecast" class="tab-content">
-    <div id="forecast-container" style="display:grid; grid-template-columns: repeat(6, 1fr); gap: 8px;"></div>
+    <div id="forecast-loading" style="text-align: center; padding: 40px; color: var(--secondary); font-weight: 700;">Conectando con servidor meteorológico...</div>
+    <div class="forecast-grid" id="forecast-container"></div>
     
-    <div class="wrf-section">
-        <div style="font-weight: 800; font-size: 11px; color: #38bdf8;">MODELO MESOESCALA WRF (9KM)</div>
+    <div class="wrf-section" id="wrf-container" style="display:none">
+        <div class="wrf-header">
+            <span style="font-weight: 800; font-size: 13px;">MODELO MESOESCALA WRF (9KM)</span>
+            <div class="wrf-badge-container">
+                <span class="wrf-badge">ESTIMACIÓN DINÁMICA</span>
+                <span class="wrf-period-text">Próximos 6 días</span>
+            </div>
+        </div>
         <div class="wrf-grid">
-            <div class="wrf-stat"><small style="font-size:9px">Lluvia Total</small><div id="wrf-total-rain" style="font-weight:700">0 mm</div></div>
-            <div class="wrf-stat"><small style="font-size:9px">GDD Proy.</small><div id="wrf-gdd" style="font-weight:700">0°</div></div>
-            <div class="wrf-stat"><small style="font-size:9px">Viento Máx</small><div id="wrf-wind" style="font-weight:700">0 km/h</div></div>
-            <div class="wrf-stat"><small style="font-size:9px">Prob. Torm.</small><div id="wrf-prob" style="font-weight:700">0%</div></div>
+            <div class="wrf-stat">
+                <small class="wrf-label">💧 Lluvia Total</small>
+                <div class="wrf-val" id="wrf-total-rain">0.0 mm</div>
+            </div>
+            <div class="wrf-stat">
+                <small class="wrf-label">🌡️ T. Máxima Abs.</small>
+                <div class="wrf-val" id="wrf-abs-max">0.0 °C</div>
+            </div>
+            <div class="wrf-stat">
+                <small class="wrf-label">Prob. Tormentas</small>
+                <div class="wrf-val" id="wrf-prob">0%</div>
+            </div>
+            <div class="wrf-stat">
+                <small class="wrf-label">Ráfagas Prom.</small>
+                <div class="wrf-val" id="wrf-wind-avg">0 km/h</div>
+            </div>
+            <div class="wrf-stat" style="border-bottom: 2px solid #fbbf24;">
+                <small class="wrf-label">GDD Acum. Proy.</small>
+                <div class="wrf-val" id="wrf-gdd">0.0 °C/d</div>
+            </div>
+            <div class="wrf-stat" style="border-bottom: 2px solid #ab47bc;">
+                <small class="wrf-label">ETp Acum. Proy.</small>
+                <div class="wrf-val" id="wrf-etp">0.0 mm</div>
+            </div>
+            <div class="wrf-stat">
+                <small class="wrf-label">Presión Media</small>
+                <div class="wrf-val" id="wrf-press">1012 hPa</div>
+            </div>
         </div>
     </div>
-    
-    <div id="rust-risk-msg" class="agronomic-tip" style="background:#fff5f5; border-left:4px solid var(--danger); color:#c53030;">🚨 <b>ROYA:</b> Alta HR detectada (>80%). Monitoree el lote.</div>
-    <div id="water-stress-msg" class="agronomic-tip" style="background:#fffbeb; border-left:4px solid #f59e0b; color:#92400e;">⚠️ <b>ESTRÉS HÍDRICO:</b> Lluvias nulas y altas temperaturas.</div>
+
+    <div id="storm-risk-msg" class="agronomic-tip storm-risk-alert">
+      ⛈️ <strong>ALERTA DE TORMENTAS SEVERAS:</strong> Existe una alta carga de humedad atmosférica. Riesgo de granizo y lluvias de alta intensidad. Evite aplicaciones foliares.
+    </div>
+    <div id="thermal-stress-msg" class="agronomic-tip thermal-stress-alert">
+      🔥 <strong>ALERTA DE ESTRÉS TÉRMICO:</strong> Se pronostican 2 o más días consecutivos con temperaturas superiores a 35°C. Riesgo de impacto negativo en la etapa vegetativa vulnerable del cultivo.
+    </div>
+    <div id="water-stress-msg" class="agronomic-tip water-stress-alert">
+      ⚠️ <strong>RIESGO DE ESTRÉS HÍDRICO:</strong> Pronóstico de lluvias nulas (0 mm) con temperaturas elevadas (>35°C). Se recomienda verificar la disponibilidad de agua en el perfil del suelo. Programar riego si esta disponible
+    </div>
+    <div id="rust-risk-msg" class="agronomic-tip rust-alert">
+      🚨 <strong>ALERTA FITOSANITARIA:</strong> Se detectan 2 o más días consecutivos con HR > 80%. <strong>Alta probabilidad de aparición de focos de Roya.</strong> Intensifique el monitoreo de lote.
+    </div>
+    <div class="agronomic-tip">
+      <strong>Recomendación Agronómica:</strong> Vigile las ráfagas de viento mayores a 20 km/h si tiene planificado realizar aplicaciones de defensivos para evitar deriva.
+    </div>
   </div>
 </div>
 
 <script>
-// --- CONFIGURACIÓN DE GITHUB ---
-const GITHUB_RAW = "https://raw.githubusercontent.com/Diego2377872/sojamonitor/main/.data/";
-
-let estacionesData = {};
 let currentLoc = null;
-let currentFilteredData = null;
+let currentFilteredData = null; 
 const baseTemp = 10;
+let showTempLabels = false;
+let stationMarkers = {}; // Para gestionar los marcadores dinámicos
+
+// ESTRUCTURA DE DATOS AMPLIADA Y JERÁRQUICA
+const estacionesData = {}]
+  }
+};
+
 const chart = echarts.init(document.getElementById('chart'));
 
-// --- MAPA ---
-const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google' });
+const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Maps' });
+const googleSatellite = L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', { subdomains: ['mt0', 'mt1', 'mt2', 'mt3'], attribution: '© Google Maps' });
+const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'});
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' });
+
 const map = L.map('map', { center: [-23.5, -58.5], zoom: 6, layers: [googleHybrid] });
 
-// --- INICIO: CARGAR ESTACIONES DESDE GITHUB ---
-async function initApp() {
-    try {
-        const resp = await fetch(`${GITHUB_RAW}estaciones.json`);
-        estacionesData = await resp.json();
-        renderMarkers();
-        initRadar();
-    } catch (e) { console.error("Error al iniciar estaciones:", e); }
-}
+let radarLayers = [];
+let radarTimeData = [];
+let currentRadarIndex = 0;
+let radarInterval = null;
 
-function renderMarkers() {
-    Object.keys(estacionesData).forEach(name => {
-        const est = estacionesData[name];
-        L.marker(est.coords, {
-            icon: L.divIcon({
-                className: 'custom-icon',
-                html: `<div style="text-align:center">📍<div class="marker-label">${name}</div></div>`,
-                iconSize: [100, 40]
-            })
-        }).addTo(map).on('click', () => selectStation(name));
-    });
-}
-
-// --- SELECCIÓN Y CARGA DE DATOS DINÁMICOS ---
-async function selectStation(name) {
-    const est = estacionesData[name];
-    currentLoc = name;
-    document.getElementById('station-name').innerText = "Cargando " + est.titulo + "...";
-    
-    // Si no tiene historial cargado, lo busca en GitHub
-    if (!est.historial) {
-        try {
-            const resp = await fetch(`${GITHUB_RAW}${est.archivo}`);
-            estacionesData[name].historial = await resp.json();
-        } catch (e) { alert("Error cargando datos de GitHub para " + name); return; }
-    }
-
-    document.getElementById('station-name').innerText = est.titulo;
-    document.getElementById('sidebar').classList.add('active');
-    updateMonthSelector();
-    filterByMonth();
-    fetchForecast(est.coords[0], est.coords[1]);
-    setTimeout(() => chart.resize(), 500);
-}
-
-// --- LÓGICA DE DATOS (Mismo motor que index29) ---
-function updateMonthSelector() {
-    const selector = document.getElementById('month-selector');
-    const hist = estacionesData[currentLoc].historial;
-    selector.innerHTML = '<option value="all">Ciclo Completo</option>';
-    const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-    hist.forEach((h, i) => {
-        selector.innerHTML += `<option value="${i}">${meses[h.month-1]} ${h.year}</option>`;
-    });
-    selector.value = hist.length - 1;
-}
-
-function filterByMonth() {
-    const val = document.getElementById('month-selector').value;
-    const hist = estacionesData[currentLoc].historial;
-    if (val === "all") {
-        currentFilteredData = { tmax: hist.flatMap(h => h.tmax), tmin: hist.flatMap(h => h.tmin), prec: hist.flatMap(h => h.prec) };
-    } else {
-        const s = hist[parseInt(val)];
-        currentFilteredData = { tmax: [...s.tmax], tmin: [...s.tmin], prec: [...s.prec] };
-    }
-    updateAnalytics();
-}
-
-function updateAnalytics() {
-    const d = currentFilteredData;
-    const etp = d.tmax.map((tx, i) => 0.0023 * 15 * (((tx + (d.tmin[i]||tx-10))/2)+17.8) * Math.sqrt(tx-(d.tmin[i]||tx-10)));
-    const gdd = d.tmax.map((tx, i) => Math.max(0, ((tx + (d.tmin[i]||tx-10))/2) - baseTemp));
-
-    chart.setOption({
-        tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: d.tmax.map((_, i) => i + 1) },
-        yAxis: [{ type: 'value', name: '°C' }, { type: 'value', name: 'mm', position: 'right' }],
-        series: [
-            { name: 'Lluvia', type: 'bar', yAxisIndex: 1, data: d.prec, itemStyle: {color: '#4fc3f7'} },
-            { name: 'T.Máx', type: 'line', data: d.tmax, itemStyle: {color: '#ef5350'}, smooth: true },
-            { name: 'ETp', type: 'line', yAxisIndex: 1, data: etp.map(v => v.toFixed(1)), lineStyle: {type: 'dashed'}, itemStyle: {color: '#ab47bc'} }
-        ]
-    }, true);
-
-    const sumPrec = d.prec.reduce((a,b) => a+b, 0);
-    const sumEtp = etp.reduce((a,b) => a+b, 0);
-    document.getElementById('total-prec').innerText = sumPrec.toFixed(1) + " mm";
-    document.getElementById('total-etp').innerText = sumEtp.toFixed(1) + " mm";
-    document.getElementById('total-gdd').innerText = Math.round(gdd.reduce((a,b) => a+b, 0)) + " °C/d";
-    document.getElementById('water-balance').innerText = (sumPrec - sumEtp).toFixed(1) + " mm";
-    
-    // Alerta de estrés térmico
-    let consecutive = 0;
-    d.tmax.forEach(t => { if(t > 35) consecutive++; else consecutive = 0; });
-    document.getElementById('stress-alert').style.display = consecutive >= 3 ? 'block' : 'none';
-}
-
-// --- PRONÓSTICO Y MODELO WRF ---
-async function fetchForecast(lat, lon) {
-    const container = document.getElementById('forecast-container');
-    container.innerHTML = "Cargando...";
-    try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max&hourly=relative_humidity_2m&timezone=auto&forecast_days=6`;
-        const res = await fetch(url);
-        const data = await res.json();
-        container.innerHTML = "";
-        
-        let totalRain = 0; let totalGDD = 0; let maxHum = 0;
-
-        data.daily.time.forEach((t, i) => {
-            const tx = data.daily.temperature_2m_max[i];
-            const tn = data.daily.temperature_2m_min[i];
-            totalRain += data.daily.precipitation_sum[i];
-            totalGDD += Math.max(0, ((tx+tn)/2) - baseTemp);
-            
-            container.innerHTML += `
-                <div style="background:white; padding:8px; border-radius:10px; text-align:center; border:1px solid #eee;">
-                    <small>${t.split('-')[2]}/${t.split('-')[1]}</small><br>
-                    <b style="color:red">${Math.round(tx)}°</b><br>
-                    <b style="color:blue; font-size:10px;">${data.daily.precipitation_sum[i]}mm</b>
-                </div>`;
-        });
-
-        // Lógica Alertas
-        document.getElementById('wrf-total-rain').innerText = totalRain.toFixed(1) + " mm";
-        document.getElementById('wrf-gdd').innerText = Math.round(totalGDD) + "°";
-        document.getElementById('wrf-wind').innerText = Math.max(...data.daily.wind_gusts_10m_max) + " km/h";
-        
-        const avgHum = data.hourly.relative_humidity_2m.slice(0, 48).reduce((a,b)=>a+b,0)/48;
-        document.getElementById('rust-risk-msg').style.display = avgHum > 80 ? 'block' : 'none';
-        document.getElementById('water-stress-msg').style.display = (totalRain < 1 && Math.max(...data.daily.temperature_2m_max) > 35) ? 'block' : 'none';
-
-    } catch (e) { container.innerHTML = "Error API"; }
-}
-
-// --- RADAR RAINVIEWER ---
-let radarLayers = []; let currentRadarIdx = 0;
 async function initRadar() {
-    const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-    const data = await resp.json();
-    data.radar.past.forEach(item => {
-        const layer = L.tileLayer(`https://tilecache.rainviewer.com${item.path}/256/{z}/{x}/{y}/2/1_1.png`, { opacity: 0, zIndex: 500 });
-        radarLayers.push({layer, time: item.time});
+  const resp = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+  const data = await resp.json();
+  radarTimeData = data.radar.past; 
+  radarLayers.forEach(l => map.removeLayer(l));
+  radarLayers = [];
+  radarTimeData.forEach((item, index) => {
+    const layer = L.tileLayer(`https://tilecache.rainviewer.com${item.path}/256/{z}/{x}/{y}/2/1_1.png`, { 
+      opacity: 0, 
+      zIndex: 500,
+      keepBuffer: 12,
+      maxNativeZoom: 6,
+      maxZoom: 18,
+      tileSize: 256
     });
-    const radarGroup = L.layerGroup();
-    L.control.layers({}, { "Radar de Lluvias": radarGroup }).addTo(map);
-    map.on('overlayadd', (e) => { if(e.name === "Radar de Lluvias") document.getElementById('radar-control').style.display = 'flex'; });
+    radarLayers.push(layer);
+  });
+  currentRadarIndex = radarLayers.length - 1;
+  updateRadarDisplay();
 }
 
-// --- SHAPEFILES ---
+function updateRadarDisplay() {
+  radarLayers.forEach((layer, i) => {
+    if (i === currentRadarIndex) { layer.addTo(map); layer.setOpacity(0.7); } else { layer.setOpacity(0); }
+  });
+  const time = new Date(radarTimeData[currentRadarIndex].time * 1000);
+  document.getElementById('radar-time').innerText = "Hora: " + time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+  document.getElementById('radar-range').value = currentRadarIndex;
+}
+
+document.getElementById('radar-range').addEventListener('input', (e) => {
+  currentRadarIndex = parseInt(e.target.value); updateRadarDisplay(); stopRadar();
+});
+
+function playRadar() {
+  if (radarInterval) { stopRadar(); return; }
+  document.getElementById('play-btn').innerText = "⏸ Pausar";
+  radarInterval = setInterval(() => { currentRadarIndex = (currentRadarIndex + 1) % radarLayers.length; updateRadarDisplay(); }, 800);
+}
+
+function stopRadar() { clearInterval(radarInterval); radarInterval = null; document.getElementById('play-btn').innerText = "▶ Play"; }
+
+map.on('overlayadd', (e) => { if(e.name === "Radar de Lluvias") { document.getElementById('radar-control').style.display = 'flex'; document.getElementById('radar-legend').style.display = 'flex'; } });
+map.on('overlayremove', (e) => { if(e.name === "Radar de Lluvias") { document.getElementById('radar-control').style.display = 'none'; document.getElementById('radar-legend').style.display = 'none'; stopRadar(); } });
+
+const baseMaps = { "Esri Satelital": esriSatellite, 
+    "Google Híbrido": googleHybrid, 
+    "Google Satélite": googleSatellite, 
+    "OpenStreetMap": osm};
+const radarOverlay = L.layerGroup();
+const overlayMaps = { "Radar de Lluvias": radarOverlay };
+
+let shpLayer = L.layerGroup();
+const layerControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
+
 document.getElementById('shp-upload').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
-    reader.onload = function(ev) {
-        shp(ev.target.result).then(geojson => {
-            L.geoJSON(geojson, { style: { color: "#8bc34a", weight: 3, fillOpacity: 0.2 } }).addTo(map);
+    reader.onload = function(event) {
+        shp(event.target.result).then(function(geojson) {
+            shpLayer.clearLayers();
+            const geoLayer = L.geoJSON(geojson, {
+                style: { color: "#8bc34a", weight: 3, fillOpacity: 0.2 },
+                onEachFeature: function(feature, layer) {
+                    if (feature.properties) {
+                        let content = `<div style="max-height:200px; overflow-y:auto;"><table class="shp-popup-table">`;
+                        for (let key in feature.properties) {
+                            content += `<tr><td><b>${key}:</b></td><td>${feature.properties[key]}</td></tr>`;
+                        }
+                        content += `</table></div>`;
+                        layer.bindPopup(content);
+                    }
+                }
+            }).addTo(shpLayer);
+            
+            shpLayer.addTo(map);
+            map.fitBounds(geoLayer.getBounds());
+            
+            layerControl.addOverlay(shpLayer, "Lote Cargado (Shape)");
+            alert("Shapefile cargado. Haga clic en el lote para ver sus atributos.");
+        }).catch(err => {
+            alert("Error al procesar el archivo ZIP.");
+            console.error(err);
         });
     };
     reader.readAsArrayBuffer(file);
 });
 
-function showTab(tab) {
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
-    if(tab === 'monitor') chart.resize();
-}
-function closeSidebar() { document.getElementById('sidebar').classList.remove('active'); }
+document.getElementById('data-upload').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(event) {
+      try {
+          const newData = JSON.parse(event.target.result);
+          // Assume newData is {station: "name", year: num, month: num, tmax: [], tmin: [], prec: []}
+          const stationName = newData.station;
+          if (!estacionesData[stationName]) {
+              alert("Estación no existe.");
+              return;
+          }
+          // Create new entry
+          const entry = {
+              year: newData.year,
+              month: newData.month,
+              tmax: newData.tmax,
+              tmin: newData.tmin,
+              prec: newData.prec
+          };
+          // Validate single entry
+          const lengths = [entry.tmax.length, entry.tmin.length, entry.prec.length];
+          if (new Set(lengths).size !== 1) {
+              alert("Inconsistencia en longitudes de arrays.");
+              return;
+          }
+          // Add to historial
+          estacionesData[stationName].historial.push(entry);
+          // Sort historial by year and month
+          estacionesData[stationName].historial.sort((a, b) => a.year - b.year || a.month - b.month);
+          // If current, update
+          if (currentLoc === stationName) {
+              updateMonthSelector();
+              filterByMonth();
+          }
+          alert("Datos del mes cargados correctamente.");
+      } catch (err) {
+          alert("Error al procesar JSON.");
+          console.error(err);
+      }
+  };
+  reader.readAsText(file);
+});
 
-initApp();
+initRadar();
+
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if(tab === 'monitor') chart.resize();
+}
+
+document.getElementById('downloadCsv').onclick = function() {
+    if (!currentLoc || !currentFilteredData) return alert("Selecciona una estación primero para exportar datos.");
+    const d = currentFilteredData;
+    let csv = "ID_Dia,Estacion,TMax_Celsius,TMin_Celsius,Precip_mm\n";
+    d.tmax.forEach((t, i) => {
+        csv += `${i+1},${currentLoc},${t},${d.tmin[i] || 0},${d.prec[i] || 0}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `Reporte_Monitoreo_Soja_${currentLoc.replace(/\s/g, '_')}.csv`);
+    link.click();
+};
+
+async function fetchForecast(lat, lon) {
+  const container = document.getElementById('forecast-container');
+  const loader = document.getElementById('forecast-loading');
+  const rustMsg = document.getElementById('rust-risk-msg');
+  const waterStressMsg = document.getElementById('water-stress-msg');
+  const thermalStressMsg = document.getElementById('thermal-stress-msg');
+  const stormRiskMsg = document.getElementById('storm-risk-msg');
+  const wrfContainer = document.getElementById('wrf-container');
+  
+  loader.style.display = 'block'; 
+  container.innerHTML = '';
+  wrfContainer.style.display = 'none';
+  rustMsg.style.display = 'none';
+  waterStressMsg.style.display = 'none';
+  thermalStressMsg.style.display = 'none';
+  stormRiskMsg.style.display = 'none';
+  
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_gusts_10m_max&hourly=relative_humidity_2m,surface_pressure,cape&timezone=auto&forecast_days=6`;
+    const response = await fetch(url);
+    const data = await response.json();
+    loader.style.display = 'none';
+    wrfContainer.style.display = 'block';
+
+    let dailyHumidities = [];
+    let dailyMaxTemps = [];
+    let totalForecastPrec = 0;
+    let absoluteMaxTemp = 0;
+    let totalGDDProy = 0;
+    let totalETpProy = 0;
+
+    const avgCape = Math.round(data.hourly.cape.slice(0, 24).reduce((a, b) => a + b, 0) / 24);
+    const avgPress = Math.round(data.hourly.surface_pressure.slice(0, 24).reduce((a, b) => a + b, 0) / 24);
+    
+    const totalWrfRain = data.daily.precipitation_sum.reduce((a, b) => a + b, 0);
+    const absMaxTemp = Math.max(...data.daily.temperature_2m_max);
+    const avgWindGusts = Math.round(data.daily.wind_gusts_10m_max.reduce((a, b) => a + b, 0) / data.daily.wind_gusts_10m_max.length);
+
+    data.daily.time.forEach((_, i) => {
+        const tmx = data.daily.temperature_2m_max[i];
+        const tmn = data.daily.temperature_2m_min[i];
+        const tmd = (tmx + tmn) / 2;
+        totalGDDProy += Math.max(0, tmd - baseTemp);
+        totalETpProy += 0.0023 * 15 * (tmd + 17.8) * Math.sqrt(tmx - tmn);
+    });
+
+    document.getElementById('wrf-total-rain').innerText = totalWrfRain.toFixed(1) + " mm";
+    document.getElementById('wrf-abs-max').innerText = absMaxTemp.toFixed(1) + " °C";
+    document.getElementById('wrf-prob').innerText = (avgCape > 500 ? "75%" : "15%");
+    document.getElementById('wrf-gdd').innerText = Math.round(totalGDDProy) + " °C/d";
+    document.getElementById('wrf-etp').innerText = totalETpProy.toFixed(1) + " mm";
+    document.getElementById('wrf-wind-avg').innerText = avgWindGusts + " km/h";
+    document.getElementById('wrf-press').innerText = avgPress + " hPa";
+
+    const currentAvgTemp = (data.daily.temperature_2m_max[0] + data.daily.temperature_2m_min[0]) / 2;
+    const currentRH = data.hourly.relative_humidity_2m[0] / 100;
+    if(Math.exp(0.07 * (currentAvgTemp * currentRH) + 1.2) > 50) stormRiskMsg.style.display = 'block';
+
+    data.daily.time.forEach((date, i) => {
+      const dayObj = new Date(date + "T00:00:00");
+      const dayName = i === 0 ? "HOY" : dayObj.toLocaleDateString('es-ES', {weekday: 'short', day: 'numeric'});
+      const humidityDay = data.hourly.relative_humidity_2m.slice(i*24, (i+1)*24);
+      const avgHum = Math.round(humidityDay.reduce((a,b) => a+b, 0) / 24);
+      const gusts = Math.round(data.daily.wind_gusts_10m_max[i]);
+      const dayMax = data.daily.temperature_2m_max[i];
+      const dayPrec = data.daily.precipitation_sum[i];
+      
+      dailyHumidities.push(avgHum);
+      dailyMaxTemps.push(dayMax);
+      totalForecastPrec += dayPrec;
+      if (dayMax > absoluteMaxTemp) absoluteMaxTemp = dayMax;
+
+      container.innerHTML += `
+        <div class="fc-card" ${i===0 ? 'style="border:2px solid var(--accent)"' : ''}>
+          <span class="fc-date">${dayName}</span>
+          <div class="fc-temp">
+            <span class="fc-max">${Math.round(dayMax)}°</span>
+            <span class="fc-min">${Math.round(data.daily.temperature_2m_min[i])}°</span>
+          </div>
+          <div class="fc-extra">
+            <div class="fc-item">💧 <b>${dayPrec}</b><small>mm</small></div>
+            <div class="fc-item">🌫️ <b>${avgHum}</b><small>% HR</small></div>
+            <div class="fc-item">💨 <b>${gusts}</b><small>km/h</small></div>
+          </div>
+        </div>
+      `;
+    });
+
+    let consecutiveHighHum = 0; let maxConsecutiveHum = 0;
+    dailyHumidities.forEach(h => { if(h > 80) { consecutiveHighHum++; if(consecutiveHighHum > maxConsecutiveHum) maxConsecutiveHum = consecutiveHighHum; } else { consecutiveHighHum = 0; } });
+    if(maxConsecutiveHum >= 2) rustMsg.style.display = 'block';
+
+    if(totalForecastPrec === 0 && absoluteMaxTemp > 35) waterStressMsg.style.display = 'block';
+
+    let consecutiveHighTemp = 0; let maxConsecutiveTemp = 0;
+    dailyMaxTemps.forEach(t => { if(t > 35) { consecutiveHighTemp++; if(consecutiveHighTemp > maxConsecutiveTemp) maxConsecutiveTemp = consecutiveHighTemp; } else { consecutiveHighTemp = 0; } });
+    if(maxConsecutiveTemp >= 2) thermalStressMsg.style.display = 'block';
+
+  } catch (e) { loader.innerText = "Error de conexión con la API."; }
+}
+
+function calculateETp(tmax, tmin) { return tmax.map((tx, i) => { const tmin_val = tmin[i] || (tx - 10); const etp = 0.0023 * 15 * (((tx + tmin_val) / 2) + 17.8) * Math.sqrt(tx - tmin_val); return parseFloat(etp.toFixed(2)); }); }
+function calculateGDD(tmax, tmin) { return tmax.map((tx, i) => { const tmin_val = tmin[i] || (tx - 10); return Math.max(0, ((tx + tmin_val) / 2) - baseTemp); }); }
+
+// --- LÓGICA DE SELECTOR INTELIGENTE DINÁMICO ---
+
+const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+function updateMonthSelector() {
+    const selector = document.getElementById('month-selector');
+    const station = estacionesData[currentLoc];
+    if(!station) return;
+    selector.innerHTML = '<option value="all">Ciclo Completo (Histórico)</option>';
+    
+    station.historial.forEach((item, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${nombresMeses[item.month - 1]} ${item.year}`;
+        selector.appendChild(option);
+    });
+    
+    selector.value = station.historial.length - 1;
+}
+
+function filterByMonth() {
+    const value = document.getElementById('month-selector').value;
+    const station = estacionesData[currentLoc];
+    if(!station) return;
+    
+    if (value === "all") {
+        currentFilteredData = {
+            tmax: station.historial.flatMap(h => h.tmax),
+            tmin: station.historial.flatMap(h => h.tmin),
+            prec: station.historial.flatMap(h => h.prec)
+        };
+    } else {
+        const selected = station.historial[parseInt(value)];
+        currentFilteredData = {
+            tmax: [...selected.tmax],
+            tmin: [...selected.tmin],
+            prec: [...selected.prec]
+        };
+    }
+    updateChart();
+}
+
+function updateChart() {
+  if (!currentLoc || !currentFilteredData) return;
+  const d = currentFilteredData;
+  const fechasDinamicas = Array.from({length: d.tmax.length}, (_, i) => (i + 1).toString().padStart(2, '0'));
+  const etpData = calculateETp(d.tmax, d.tmin);
+  const gddData = calculateGDD(d.tmax, d.tmin);
+  const option = {
+    toolbox: { feature: { myLabelToggle: { show: true, title: 'Etiquetas Temp.', icon: 'path://M512 0C229.231 0 0 229.231 0 512s229.231 512 512 512 512-229.231 512-512S794.769 0 512 0zm0 928c-229.748 0-416-186.252-416-416S282.252 96 512 96s416 186.252 416 416-186.252 416-416 416zM320 448h384v128H320V448z', onclick: function () { showTempLabels = !showTempLabels; updateChart(); } } } },
+    legend: { bottom: 0, icon: 'roundRect', data: ['T.Máx', 'T.Mín', 'Lluvia', 'ETp', 'GDD', 'Umbral Máx (35°C)', 'Umbral Mín (25°C)'] },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(255, 255, 255, 0.98)', borderRadius: 12, padding: 15, borderWidth: 1, borderColor: '#e2e8f0', shadowBlur: 15, shadowColor: 'rgba(0,0,0,0.1)', textStyle: { color: '#1e293b', fontSize: 13 }, formatter: function (params) { let date = params[0].name; let html = `<div style="border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 8px; font-weight: 800; font-size: 14px; color: #1b5e20;">📅 Día: ${date}</div>`; let tmaxVal = null; let tminVal = null; params.forEach(p => { if (p.seriesName === 'T.Máx') tmaxVal = p.value; if (p.seriesName === 'T.Mín') tminVal = p.value; if (p.seriesName.includes('Umbral')) return; let unit = (p.seriesName === 'Lluvia' || p.seriesName === 'ETp') ? ' mm' : (p.seriesName === 'GDD' ? ' °C/d' : '°C'); let val = p.value || "S/D"; let extra = (p.seriesName === 'T.Máx' && p.value > 35) ? ' <span style="color: #ef5350; font-weight: bold;">⚠️ Estrés</span>' : ''; if(p.seriesName === 'Lluvia' && p.value > 20) extra = ' <span style="color: #0288d1; font-weight: bold;">🌧️</span>'; html += `<div style="display: flex; justify-content: space-between; gap: 40px; margin-bottom: 4px;"><span style="display: flex; align-items: center;"><span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: ${p.color}; margin-right: 8px;"></span>${p.seriesName}</span><span style="font-weight: 700;">${val}${unit}${extra}</span></div>`; }); if (tmaxVal !== null && tminVal !== null) { let amplitud = (tmaxVal - tminVal).toFixed(1); html += `<div style="border-top: 1px solid #f1f5f9; margin-top: 8px; padding-top: 8px; display: flex; justify-content: space-between; color: #475569; font-weight: 600;"><span>📐 Amplitud Térmica</span><span>${amplitud}°C</span></div>`; } return html; } },
+    grid: { top: 60, left: 50, right: 50, bottom: 90 },
+    xAxis: { type: 'category', data: fechasDinamicas },
+    yAxis: [{ type: 'value', name: '°C', min: 10 }, { type: 'value', name: 'mm', position: 'right', splitLine: {show: false} }],
+    series: [{ name: 'Lluvia', type: 'bar', yAxisIndex: 1, data: d.prec, itemStyle: { color: '#4fc3f7', opacity: 0.7 }, label: { show: true, position: 'top', fontSize: 10, fontWeight: 'bold', color: '#0288d1', formatter: function(params) { return params.value > 0 ? params.value + 'mm' : ''; } } }, { name: 'T.Máx', type: 'line', data: d.tmax, smooth: true, itemStyle: { color: '#ef5350' }, label: { show: showTempLabels, fontSize: 10, fontWeight: 'bold' }, z: 10 }, { name: 'T.Mín', type: 'line', data: d.tmin, smooth: true, itemStyle: { color: '#42a5f5' }, label: { show: showTempLabels, position: 'bottom', fontSize: 10, fontWeight: 'bold' }, z: 10 }, { name: 'ETp', type: 'line', yAxisIndex: 1, data: etpData, smooth: true, lineStyle: { type: 'dashed', width: 3 }, itemStyle: { color: '#ab47bc' } }, { name: 'GDD', type: 'line', data: gddData.map(v => v.toFixed(1)), smooth: true, lineStyle: { width: 3 }, itemStyle: { color: '#f59e0b' } }, { name: 'Umbral Máx (35°C)', type: 'line', symbol: 'none', data: Array(d.tmax.length).fill(35), lineStyle: { color: '#ef5350', type: 'dotted', width: 2 } }, { name: 'Umbral Mín (25°C)', type: 'line', symbol: 'none', data: Array(d.tmin.length).fill(25), lineStyle: { color: '#42a5f5', type: 'dotted', width: 2 } }]
+  };
+  chart.setOption(option, true); 
+  
+  const totalPrec = d.prec.reduce((a, b) => a + b, 0).toFixed(1);
+  const totalETp = etpData.reduce((a, b) => a + b, 0).toFixed(1);
+  const totalGDD = Math.round(gddData.reduce((a, b) => a + b, 0));
+  const waterBalance = (totalPrec - totalETp).toFixed(1);
+  
+  document.getElementById('total-prec').innerText = totalPrec + " mm";
+  document.getElementById('total-etp').innerText = totalETp + " mm";
+  document.getElementById('total-gdd').innerText = totalGDD + " °C/d";
+  document.getElementById('water-balance').innerText = waterBalance + " mm";
+  document.getElementById('water-balance').style.color = waterBalance < 0 ? '#d32f2f' : '#2e7d32';
+
+  let consecutiveHighTemp = 0; let maxConsecutiveTemp = 0;
+  d.tmax.forEach(t => { if(t > 35) { consecutiveHighTemp++; if(consecutiveHighTemp > maxConsecutiveTemp) maxConsecutiveTemp = consecutiveHighTemp; } else { consecutiveHighTemp = 0; } });
+  document.getElementById('stress-alert').style.display = maxConsecutiveTemp >= 3 ? 'block' : 'none';
+}
+
+function renderMarkers() {
+  Object.keys(estacionesData).forEach(name => {
+    if (stationMarkers[name]) return; 
+    
+    const est = estacionesData[name];
+    const pinSvg = `
+      <svg viewBox="0 0 24 24" class="marker-pin" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#1b5e20" stroke="#ffffff" stroke-width="1.5"/>
+        <circle cx="12" cy="9" r="3" fill="#ffffff"/>
+      </svg>
+    `;
+
+    const marker = L.marker(est.coords, {
+      icon: L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div class="station-marker-container">${pinSvg}<div class="marker-label">${name}</div></div>`,
+        iconSize: [120, 60], iconAnchor: [60, 45]
+      })
+    }).addTo(map).on('click', () => {
+      selectStation(name);
+    });
+    
+    stationMarkers[name] = marker;
+  });
+}
+
+function selectStation(name) {
+    const est = estacionesData[name];
+    currentLoc = name;
+    document.getElementById('station-name').innerText = est.titulo;
+    document.getElementById('sidebar').classList.add('active');
+    updateMonthSelector(); 
+    filterByMonth(); 
+    fetchForecast(est.coords[0], est.coords[1]);
+    setTimeout(() => { chart.resize(); }, 500);
+}
+
+// ---------------------------------------------------------
+// NUEVAS FUNCIONALIDADES DE CARGA DINÁMICA
+// ---------------------------------------------------------
+
+/**
+ * Valida la integridad estructural de los datos de la estación.
+ * @param {Object} newData - Datos de la estación a validar.
+ */
+function validateStationStructure(newData) {
+    if (!newData.titulo || !newData.coords || !Array.isArray(newData.historial)) {
+        console.error("Estructura base inválida.");
+        return false;
+    }
+    for (const entry of newData.historial) {
+        const lengths = [entry.tmax.length, entry.tmin.length, entry.prec.length];
+        if (new Set(lengths).size !== 1) {
+            console.error(`Inconsistencia de longitud en historial ${entry.month}/${entry.year}`);
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Carga o actualiza una estación en el sistema de forma reactiva.
+ * @param {string} stationName - Nombre clave de la estación.
+ * @param {Object} newData - Objeto con la estructura obligatoria.
+ */
+function updateStationData(stationName, newData) {
+    if (!validateStationStructure(newData)) {
+        alert("Error: La estructura de datos es inválida o los arrays tmax/tmin/prec no coinciden.");
+        return;
+    }
+
+    // Actualizar o Crear en el objeto global
+    estacionesData[stationName] = newData;
+
+    // Actualizar visualmente el mapa
+    renderMarkers();
+
+    // Si es la estación activa, refrescar UI inmediatamente
+    if (currentLoc === stationName) {
+        updateMonthSelector();
+        filterByMonth();
+        // Nota: no forzamos fetchForecast aquí para ahorrar cuota de API, 
+        // pero se refrescaría si el usuario vuelve a hacer click.
+    }
+    
+    console.log(`Estación "${stationName}" actualizada correctamente.`);
+}
+
+// Inicialización de marcadores base
+renderMarkers();
+
+function closeSidebar() { document.getElementById('sidebar').classList.remove('active'); document.getElementById('open-panel-btn').style.display = 'block'; }
+function openSidebar() { document.getElementById('sidebar').classList.add('active'); document.getElementById('open-panel-btn').style.display = 'none'; chart.resize(); }
 </script>
 </body>
 </html>
