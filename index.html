@@ -10,8 +10,11 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/shpjs/4.0.4/shp.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
+    /* Estilos igual que antes, se omiten por brevedad, pero deben incluirse */
     :root {
       --primary: #1b5e20;
       --secondary: #2e7d32;
@@ -183,6 +186,22 @@
     .month-filter-container span { font-size: 10px; font-weight: 800; color: var(--primary); text-transform: uppercase; }
     #month-selector { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #cbd5e1; font-family: inherit; font-weight: 700; color: var(--dark); cursor: pointer; font-size: 12px; outline: none; transition: 0.3s; }
     #month-selector:hover { border-color: var(--primary); }
+
+    /* Toast notification */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--primary);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      z-index: 9999;
+      display: none;
+      font-weight: 600;
+      transition: opacity 0.3s;
+    }
   </style>
 </head>
 <body>
@@ -317,14 +336,166 @@
   </div>
 </div>
 
+<!-- Toast container -->
+<div id="toast"></div>
+
 <script>
+// --- SUPABASE CONFIG ---
+const supabaseClient = supabase.createClient(
+  'https://rfxsbojhtkbhyjpotatx.supabase.co',
+  'sb_publishable_JuJJjla5vXh5Cu0JXGDsdQ_uJf2Qrg-'
+);
+
+// --- FUNCIÓN PARA MOSTRAR NOTIFICACIONES (TOAST) ---
+function showToast(message, type = 'success') {
+  const toast = document.getElementById('toast');
+  toast.style.backgroundColor = type === 'success' ? '#2e7d32' : '#d32f2f';
+  toast.innerText = message;
+  toast.style.display = 'block';
+  toast.style.opacity = '1';
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => toast.style.display = 'none', 300);
+  }, 3000);
+}
+
+// --- FUNCIÓN PARA GUARDAR DATOS MENSUALES EN SUPABASE ---
+async function saveToSupabase(data) {
+  try {
+    console.log("Guardando en Supabase:", data);
+    // 1. Eliminar registros existentes con la misma estación, año y mes
+    const { error: deleteError } = await supabaseClient
+      .from("agromet_data")
+      .delete()
+      .eq("station", data.station)
+      .eq("year", data.year)
+      .eq("month", data.month);
+
+    if (deleteError) throw deleteError;
+
+    // 2. Insertar el nuevo registro
+    const { error: insertError } = await supabaseClient
+      .from("agromet_data")
+      .insert([data]);
+
+    if (insertError) throw insertError;
+
+    console.log("Datos guardados en Supabase correctamente (sin duplicados).");
+    return true;
+  } catch (err) {
+    console.error("Error al guardar en Supabase:", err.message);
+    throw err;
+  }
+}
+
+// --- FUNCIÓN PARA GUARDAR UNA NUEVA ESTACIÓN EN SUPABASE (TABLA stations) ---
+async function saveStationToSupabase(station) {
+  try {
+    const { error } = await supabaseClient
+      .from("stations")
+      .upsert([station], { onConflict: 'name' }); // upsert para actualizar si ya existe
+
+    if (error) throw error;
+    console.log("Estación guardada en Supabase:", station.name);
+    return true;
+  } catch (err) {
+    console.error("Error al guardar estación en Supabase:", err.message);
+    throw err;
+  }
+}
+
+// --- CARGA DE DATOS MENSUALES DESDE SUPABASE ---
+async function loadSupabaseData() {
+  try {
+    console.log("Cargando datos mensuales desde Supabase...");
+    const { data, error } = await supabaseClient
+      .from("agromet_data")
+      .select("*");
+
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      console.log(`Se obtuvieron ${data.length} registros de Supabase.`);
+      data.forEach(item => {
+        const st = item.station;
+        if (estacionesData[st]) {
+          // Buscar si ya existe un mes igual en el historial
+          const index = estacionesData[st].historial.findIndex(
+            h => h.year === item.year && h.month === item.month
+          );
+          const newEntry = {
+            year: item.year,
+            month: item.month,
+            tmax: item.tmax,
+            tmin: item.tmin,
+            prec: item.prec
+          };
+          if (index !== -1) {
+            // Reemplazar el existente con el de Supabase
+            estacionesData[st].historial[index] = newEntry;
+            console.log(`Reemplazado mes ${item.month}/${item.year} en ${st}`);
+          } else {
+            // Agregar nuevo
+            estacionesData[st].historial.push(newEntry);
+            console.log(`Agregado nuevo mes ${item.month}/${item.year} en ${st}`);
+          }
+        } else {
+          console.warn(`Estación ${st} no encontrada en estacionesData`);
+        }
+      });
+      
+      // Reordenar cronológicamente después de cargar todo
+      Object.keys(estacionesData).forEach(key => {
+        estacionesData[key].historial.sort((a, b) => a.year - b.year || a.month - b.month);
+      });
+      console.log("Sincronización de datos mensuales completada.");
+    } else {
+      console.log("No se encontraron datos mensuales en Supabase.");
+    }
+  } catch (err) {
+    console.error("Error al cargar datos mensuales de Supabase:", err.message);
+    showToast('Error al cargar datos de la nube', 'error');
+  }
+}
+
+// --- CARGA DE ESTACIONES DESDE SUPABASE (TABLA stations) ---
+async function loadStationsFromSupabase() {
+  try {
+    console.log("Cargando estaciones desde Supabase...");
+    const { data, error } = await supabaseClient
+      .from("stations")
+      .select("*");
+
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      data.forEach(station => {
+        const name = station.name;
+        if (!estacionesData[name]) {
+          // Crear nueva estación
+          estacionesData[name] = {
+            titulo: station.title || name,
+            coords: [station.lat, station.lon],
+            historial: []
+          };
+          console.log(`Estación añadida desde Supabase: ${name}`);
+        }
+      });
+      // Volver a renderizar marcadores para incluir las nuevas
+      renderMarkers();
+    }
+  } catch (err) {
+    console.error("Error al cargar estaciones de Supabase:", err.message);
+  }
+}
+
 let currentLoc = null;
 let currentFilteredData = null; 
 const baseTemp = 10;
 let showTempLabels = false;
 let stationMarkers = {}; // Para gestionar los marcadores dinámicos
 
-// ESTRUCTURA DE DATOS AMPLIADA Y JERÁRQUICA
+// ESTRUCTURA DE DATOS INICIAL (ESTACIONES PREDEFINIDAS)
 const estacionesData = {
   "Mariscal Estigarribia": {
     titulo: "Mcal. Estigarribia - Chaco",
@@ -339,19 +510,11 @@ const estacionesData = {
         },
         {
             year: 2026,
-            month: 2, // Febrero (Datos de Prueba Solicitados)
+            month: 2, // Febrero
             tmax: [38.4, 30.8, 32.0, 35.8, 37.2, 37.0, 38.0, 36.4, 37.4, 38.4, 40.4, 38.6, 40.4, 36.6, 34.2, 34.8, 36.0, 39.4, 40.2, 40.8, 36.4, 36.8, 32.2, 33.0, 34.4, 35.4, null],
             tmin: [21.0, 21.0, 22.6, 24.2, 24.6, 23.0, 22.8, 23.8, 25.0, 25.4, 26.2, 24.8, 24.2, 23.2, 24.2, 23.6, 24.0, 25.0, 24.8, 25.2, 23.6, 23.0, 23.0, 23.6, 21.8, null, null],
             prec: [29.0, 36.0, 0.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 15.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.0, 3.2, 0.0, 0.0, 0.0, 0.0]
-        },
-		{
-            year: 2026,
-            month: 3, // Febrero (Datos de Prueba Solicitados)
-            tmax: [38.4, 30.8, 32.0, 35.8, 37.2, 37.0, 38.0, 36.4, 37.4, 38.4, 40.4, 38.6, 40.4, 36.6, 34.2, 34.8, 36.0, 39.4, 40.2, 40.8, 36.4, 36.8, 32.2, 33.0, 34.4, 35.4, 36.0],
-            tmin: [21.0, 21.0, 22.6, 24.2, 24.6, 23.0, 22.8, 23.8, 25.0, 25.4, 26.2, 24.8, 24.2, 23.2, 24.2, 23.6, 24.0, 25.0, 24.8, 25.2, 23.6, 23.0, 23.0, 23.6, 21.8, 21.5, 22.5],
-            prec: [29.0, 36.0, 0.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 15.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.0, 3.2, 0.0, 0.0, 0.0, 0.0]
         }
-
     ]
   },
   "Encarnación": {
@@ -363,15 +526,7 @@ const estacionesData = {
         tmax: [31.4, 33.8, 34.6, 29.3, 28.8, 30.2, 33.6, 35.4, 35.6, 32.6, 25.0, 30.4, 32.4, 34.0, 34.2, 34.6, 30.0, 32.6, 32.8, 29.6, 29.2, 32.4, 32.4, 32.4, 34.6, 35.6, 35.6, 35.4, 35.2, 34.2],
         tmin: [24.4, 23.6, 24.4, 13.8, 13.4, 17.7, 22.7, 22.1, 22.0, 21.0, 20.0, 18.6, 20.0, 18.1, 21.0, 24.0, 20.8, 23.6, 19.0, 14.4, 17.8, 20.2, 23.0, 21.6, 23.0, 24.2, 25.2, 23.8, 23.0, 20.8],
         prec: [0.2, 0, 0, 0, 0, 0, 0.2, 0, 15.0, 18.9, 0, 0, 0, 0, 0, 14.0, 50.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.3, 10.1, 0.1, 4.0]
-    },
-    {
-         year: 2026,
-         month: 2, // Febrero (Datos de Prueba Solicitados)
-         tmax: [38.5, 39.2, 41.0, 40.5, 37.8, 34.2, 35.0, 36.8, 42.0, 41.5, 39.8, 38.0, 37.5, 36.2, 35.8, 34.5, 36.0, 38.2, 39.4, 40.8, 42.2, 41.0, 39.5, 37.8, 36.4, 35.2, 34.8, 36.0],
-         tmin: [23.5, 24.2, 25.8, 26.0, 24.5, 22.1, 21.8, 23.0, 25.5, 26.2, 25.0, 24.2, 23.8, 23.0, 22.5, 21.8, 22.4, 23.8, 24.5, 25.2, 26.5, 25.8, 24.5, 23.2, 22.8, 22.0, 21.5, 22.2],
-         prec: [0, 0, 0, 12.5, 45.0, 8.2, 0, 0, 0, 0, 0, 5.4, 18.2, 0, 0, 2.5, 0, 0, 0, 0, 0, 0, 0, 15.8, 32.0, 5.5, 0, 0]
-        }
-    ]
+    }]
   },
   "Caazapá": {
     titulo: "Caazapá - Zona Sur",
@@ -510,20 +665,83 @@ document.getElementById('shp-upload').addEventListener('change', function(e) {
     reader.readAsArrayBuffer(file);
 });
 
+// --- FUNCIONES DE CÁLCULO (ETp y GDD) ---
+function calculateETp(tmax, tmin) { 
+  return tmax.map((tx, i) => { 
+    const tmin_val = tmin[i] || (tx - 10); 
+    const etp = 0.0023 * 15 * (((tx + tmin_val) / 2) + 17.8) * Math.sqrt(tx - tmin_val); 
+    return parseFloat(etp.toFixed(2)); 
+  }); 
+}
+function calculateGDD(tmax, tmin) { 
+  return tmax.map((tx, i) => { 
+    const tmin_val = tmin[i] || (tx - 10); 
+    return Math.max(0, ((tx + tmin_val) / 2) - baseTemp); 
+  }); 
+}
+
+// --- MANEJADOR DE CARGA DE JSON (SOPORTA NUEVAS ESTACIONES) ---
 document.getElementById('data-upload').addEventListener('change', function(e) {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(event) {
+  reader.onload = async function(event) {
       try {
           const newData = JSON.parse(event.target.result);
-          // Assume newData is {station: "name", year: num, month: num, tmax: [], tmin: [], prec: []}
           const stationName = newData.station;
+          
+          // Si la estación no existe, intentar crearla
           if (!estacionesData[stationName]) {
-              alert("Estación no existe.");
-              return;
+            // Verificar si el JSON incluye coordenadas
+            if (newData.lat !== undefined && newData.lon !== undefined) {
+              // Crear estación con las coordenadas del JSON
+              estacionesData[stationName] = {
+                titulo: newData.title || stationName,
+                coords: [newData.lat, newData.lon],
+                historial: []
+              };
+              // Guardar en Supabase
+              await saveStationToSupabase({
+                name: stationName,
+                title: newData.title || stationName,
+                lat: newData.lat,
+                lon: newData.lon
+              });
+              renderMarkers(); // Agregar marcador al mapa
+              showToast(`Nueva estación ${stationName} creada`, 'success');
+            } else {
+              // Pedir coordenadas al usuario
+              const lat = prompt(`Ingrese la latitud para la nueva estación "${stationName}":`, '-23.5');
+              const lon = prompt(`Ingrese la longitud para la nueva estación "${stationName}":`, '-58.5');
+              if (lat === null || lon === null) {
+                alert("Operación cancelada. No se creó la estación.");
+                return;
+              }
+              const latNum = parseFloat(lat);
+              const lonNum = parseFloat(lon);
+              if (isNaN(latNum) || isNaN(lonNum)) {
+                alert("Coordenadas inválidas. No se creó la estación.");
+                return;
+              }
+              // Crear estación
+              estacionesData[stationName] = {
+                titulo: stationName,
+                coords: [latNum, lonNum],
+                historial: []
+              };
+              // Guardar en Supabase
+              await saveStationToSupabase({
+                name: stationName,
+                title: stationName,
+                lat: latNum,
+                lon: lonNum
+              });
+              renderMarkers();
+              showToast(`Nueva estación ${stationName} creada`, 'success');
+            }
           }
-          // Create new entry
+
+          // Ahora proceder con la carga de datos mensuales
           const entry = {
               year: newData.year,
               month: newData.month,
@@ -531,25 +749,56 @@ document.getElementById('data-upload').addEventListener('change', function(e) {
               tmin: newData.tmin,
               prec: newData.prec
           };
-          // Validate single entry
           const lengths = [entry.tmax.length, entry.tmin.length, entry.prec.length];
           if (new Set(lengths).size !== 1) {
               alert("Inconsistencia en longitudes de arrays.");
               return;
           }
-          // Add to historial
-          estacionesData[stationName].historial.push(entry);
-          // Sort historial by year and month
+
+          // Calcular ETP
+          const etpArray = calculateETp(entry.tmax, entry.tmin);
+
+          // Crear objeto completo para guardar en Supabase (SIN gdd)
+          const dataToSave = {
+              station: stationName,
+              year: entry.year,
+              month: entry.month,
+              tmax: entry.tmax,
+              tmin: entry.tmin,
+              prec: entry.prec,
+              etp: etpArray
+          };
+
+          // Actualizar historial local
+          const index = estacionesData[stationName].historial.findIndex(
+              h => h.year === entry.year && h.month === entry.month
+          );
+          if (index !== -1) {
+              // Reemplazar el existente
+              estacionesData[stationName].historial[index] = entry;
+              console.log(`Reemplazado mes local ${entry.month}/${entry.year} en ${stationName}`);
+          } else {
+              // Agregar nuevo
+              estacionesData[stationName].historial.push(entry);
+              console.log(`Agregado nuevo mes local ${entry.month}/${entry.year} en ${stationName}`);
+          }
+
+          // Ordenar
           estacionesData[stationName].historial.sort((a, b) => a.year - b.year || a.month - b.month);
-          // If current, update
+          
+          // Si la estación actual es la misma, actualizar vista
           if (currentLoc === stationName) {
               updateMonthSelector();
               filterByMonth();
           }
-          alert("Datos del mes cargados correctamente.");
+
+          // Guardar en Supabase
+          await saveToSupabase(dataToSave);
+          showToast('✅ Datos guardados en la nube correctamente', 'success');
       } catch (err) {
           alert("Error al procesar JSON.");
           console.error(err);
+          showToast('❌ Error al guardar en la nube: ' + err.message, 'error');
       }
   };
   reader.readAsText(file);
@@ -561,7 +810,7 @@ function showTab(tab) {
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
-  event.currentTarget.classList.add('active');
+  if(event) event.currentTarget.classList.add('active');
   if(tab === 'monitor') chart.resize();
 }
 
@@ -677,13 +926,8 @@ async function fetchForecast(lat, lon) {
     dailyMaxTemps.forEach(t => { if(t > 35) { consecutiveHighTemp++; if(consecutiveHighTemp > maxConsecutiveTemp) maxConsecutiveTemp = consecutiveHighTemp; } else { consecutiveHighTemp = 0; } });
     if(maxConsecutiveTemp >= 2) thermalStressMsg.style.display = 'block';
 
-  } catch (e) { loader.innerText = "Error de conexión con la API."; }
+  } catch (e) { if(loader) loader.innerText = "Error de conexión con la API."; }
 }
-
-function calculateETp(tmax, tmin) { return tmax.map((tx, i) => { const tmin_val = tmin[i] || (tx - 10); const etp = 0.0023 * 15 * (((tx + tmin_val) / 2) + 17.8) * Math.sqrt(tx - tmin_val); return parseFloat(etp.toFixed(2)); }); }
-function calculateGDD(tmax, tmin) { return tmax.map((tx, i) => { const tmin_val = tmin[i] || (tx - 10); return Math.max(0, ((tx + tmin_val) / 2) - baseTemp); }); }
-
-// --- LÓGICA DE SELECTOR INTELIGENTE DINÁMICO ---
 
 const nombresMeses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 
@@ -742,7 +986,7 @@ function updateChart() {
   };
   chart.setOption(option, true); 
   
-  const totalPrec = d.prec.reduce((a, b) => a + b, 0).toFixed(1);
+  const totalPrec = d.prec.reduce((a, b) => a + (b || 0), 0).toFixed(1);
   const totalETp = etpData.reduce((a, b) => a + b, 0).toFixed(1);
   const totalGDD = Math.round(gddData.reduce((a, b) => a + b, 0));
   const waterBalance = (totalPrec - totalETp).toFixed(1);
@@ -795,59 +1039,33 @@ function selectStation(name) {
     setTimeout(() => { chart.resize(); }, 500);
 }
 
-// ---------------------------------------------------------
-// NUEVAS FUNCIONALIDADES DE CARGA DINÁMICA
-// ---------------------------------------------------------
-
-/**
- * Valida la integridad estructural de los datos de la estación.
- * @param {Object} newData - Datos de la estación a validar.
- */
-function validateStationStructure(newData) {
-    if (!newData.titulo || !newData.coords || !Array.isArray(newData.historial)) {
-        console.error("Estructura base inválida.");
-        return false;
-    }
-    for (const entry of newData.historial) {
-        const lengths = [entry.tmax.length, entry.tmin.length, entry.prec.length];
-        if (new Set(lengths).size !== 1) {
-            console.error(`Inconsistencia de longitud en historial ${entry.month}/${entry.year}`);
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
- * Carga o actualiza una estación en el sistema de forma reactiva.
- * @param {string} stationName - Nombre clave de la estación.
- * @param {Object} newData - Objeto con la estructura obligatoria.
- */
-function updateStationData(stationName, newData) {
-    if (!validateStationStructure(newData)) {
-        alert("Error: La estructura de datos es inválida o los arrays tmax/tmin/prec no coinciden.");
-        return;
-    }
-
-    // Actualizar o Crear en el objeto global
-    estacionesData[stationName] = newData;
-
-    // Actualizar visualmente el mapa
+// Inicialización de la App
+async function initializeApp() {
+    // 1. Dibuja las estaciones iniciales
     renderMarkers();
-
-    // Si es la estación activa, refrescar UI inmediatamente
-    if (currentLoc === stationName) {
+    
+    // 2. Cargar estaciones desde Supabase
+    await loadStationsFromSupabase();
+    
+    // 3. Cargar datos mensuales desde Supabase
+    await loadSupabaseData();
+    
+    // 4. Si después de cargar estaciones hay una seleccionada, actualizar UI
+    if (currentLoc) {
         updateMonthSelector();
         filterByMonth();
-        // Nota: no forzamos fetchForecast aquí para ahorrar cuota de API, 
-        // pero se refrescaría si el usuario vuelve a hacer click.
     }
     
-    console.log(`Estación "${stationName}" actualizada correctamente.`);
+    // 5. Oculta el spinner de carga (si lo implementaste)
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.style.display = 'none', 500);
+    }
 }
 
-// Inicialización de marcadores base
-renderMarkers();
+// Ejecutar al final del archivo
+initializeApp();
 
 function closeSidebar() { document.getElementById('sidebar').classList.remove('active'); document.getElementById('open-panel-btn').style.display = 'block'; }
 function openSidebar() { document.getElementById('sidebar').classList.add('active'); document.getElementById('open-panel-btn').style.display = 'none'; chart.resize(); }
